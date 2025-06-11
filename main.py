@@ -72,5 +72,5 @@ for step in range(total_steps):
     optimizer.step()
 
     if step % 200 == 0:
-        print(total_loss)
-        utils.save_image(generated_img, f"output-{step % 200}.png")
+        print(total_loss.item())
+        utils.save_image(generated_img, f"output.png")
