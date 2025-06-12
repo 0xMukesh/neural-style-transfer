@@ -64,12 +64,19 @@ for step in range(total_steps):
     style_loss = torch.tensor(0.0, device=device)
 
     for content_feature, gen_content_feature in zip(content_features, generated_content_features):
+      _, channel = gen_content_feature.shape
+      gen_content_feature = gen_content_feature.view(channel, -1)
+      content_feature = content_feature.view(channel, -1)
+      
       content_loss += torch.mean((gen_content_feature - content_feature) ** 2)
 
     for style_feature, gen_style_feature in zip(style_features, generated_style_features):
       _, channel, height, width = gen_style_feature.shape
-      G = gen_style_feature.view(channel, height * width) @ gen_style_feature.view(channel, height * width).T
-      A = style_feature.view(channel, height * width) @ style_feature.view(channel, height * width).T
+      gen_style_feature = gen_style_feature.view(channel, -1)
+      style_feature = style_feature.view(channel, -1)
+
+      G = gen_style_feature @ gen_style_feature.T
+      A = style_feature @ style_feature.T
       style_loss += torch.mean((G - A) ** 2)
 
     total_loss = alpha * content_loss + beta * style_loss
