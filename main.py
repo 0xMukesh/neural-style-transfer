@@ -6,20 +6,25 @@ from PIL import Image
 class NST(nn.Module):
     def __init__(self):
         super().__init__()
-        
-        self.chosen_features = ["0", "5", "10", "19", "28"] # conv1_1, conv2_1, conv3_1, conv4_1, conv5_1 
+
+        self.content_layers = ["21"] # conv4_2
+        self.style_layers = ["0", "5", "10", "19", "28"] # conv1_1, conv2_1, conv3_1, conv4_1, conv5_1
         self.model = models.vgg19(weights="DEFAULT").features[:29] # type: ignore
 
     def forward(self, x):
-        features = []
+        content_features = []
+        style_features = []
 
         for i, layer in enumerate(self.model):
             x = layer(x)
 
-            if (str(i) in self.chosen_features):
-                features.append(x)
-            
-        return features
+            if (str(i) in self.content_layers):
+                content_features.append(x)
+
+            if (str(i) in self.style_layers):
+                style_features.append(x)
+
+        return content_features, style_features
 
 def load_image(path, device, transform):
     img = Image.open(path)
@@ -33,8 +38,8 @@ transform = transforms.Compose([
     transforms.ToTensor()
 ])
 
-content_img_path = "images/content.jpg"
-style_img_path = "images/style.jpg"
+content_img_path = "/content/images/content.jpg"
+style_img_path = "/content/images/style.jpg"
 
 content_img = load_image(content_img_path, device, transform)
 style_img = load_image(style_img_path, device, transform)
@@ -48,23 +53,24 @@ beta = 0.01
 model = NST().to(device).eval()
 optimizer = torch.optim.Adam([generated_img], learning_rate)
 
+with torch.no_grad():
+  content_features, _ = model(content_img)
+  _, style_features = model(style_img)
+
 for step in range(total_steps):
-    content_features = model(content_img)
-    style_features = model(style_img)
-    generated_features = model(generated_img)
+    generated_content_features, generated_style_features = model(generated_img)
 
-    content_loss = torch.Tensor(0)
-    style_loss = torch.Tensor(0)
+    content_loss = torch.tensor(0.0, device=device)
+    style_loss = torch.tensor(0.0, device=device)
 
-    for content_feature, style_feature, gen_feature in zip(content_features, style_features, generated_features):
-        _, channel, height, width = gen_feature.shape
+    for content_feature, gen_content_feature in zip(content_features, generated_content_features):
+      content_loss += torch.mean((gen_content_feature - content_feature) ** 2)
 
-        content_loss += torch.mean((gen_feature - content_feature) ** 2)
-
-        G = gen_feature.view(channel, height * width) @ gen_feature.view(channel, height * width).T
-        A = style_feature.view(channel, height * width) @ style_feature.view(channel, height * width).T
-
-        style_loss += torch.mean((G - A) ** 2)
+    for style_feature, gen_style_feature in zip(style_features, generated_style_features):
+      _, channel, height, width = gen_style_feature.shape
+      G = gen_style_feature.view(channel, height * width) @ gen_style_feature.view(channel, height * width).T
+      A = style_feature.view(channel, height * width) @ style_feature.view(channel, height * width).T
+      style_loss += torch.mean((G - A) ** 2)
 
     total_loss = alpha * content_loss + beta * style_loss
     optimizer.zero_grad()
@@ -72,5 +78,5 @@ for step in range(total_steps):
     optimizer.step()
 
     if step % 200 == 0:
-        print(total_loss.item())
-        utils.save_image(generated_img, f"output.png")
+        print(total_loss)
+        utils.save_image(generated_img, f"/content/outputs/{step}.png")
